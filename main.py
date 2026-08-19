@@ -5,6 +5,7 @@ import json
 
 app = FastAPI()
 
+# نقطة النهاية العامة المباشرة
 PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
 
 class CodePayload(BaseModel):
@@ -20,19 +21,16 @@ async def run_code(payload: CodePayload):
     filename = payload.filename.strip() if payload.filename else "main.py"
     ext = filename.split(".")[-1].lower() if "." in filename else "py"
 
-    # معالجة ملفات YAML بأمان
+    # معالجة ملفات YAML
     if ext in ["yaml", "yml"]:
         try:
             import yaml
             parsed_data = yaml.safe_load(payload.code)
             formatted_json = json.dumps(parsed_data, indent=2, ensure_ascii=False)
             return {"output": f"✅ Valid YAML Syntax!\nParsed JSON:\n{formatted_json}"}
-        except ModuleNotFoundError:
-            return {"output": "❌ Error: 'pyyaml' is missing on Vercel. Add 'pyyaml' to requirements.txt"}
         except Exception as e:
             return {"output": f"❌ Invalid YAML Syntax:\n{str(e)}"}
 
-    # خريطة امتدادات اللغات لـ Piston
     lang_map = {
         "py": "python",
         "js": "javascript",
@@ -45,12 +43,7 @@ async def run_code(payload: CodePayload):
         "java": "java",
         "rb": "ruby",
         "php": "php",
-        "sh": "bash",
-        "kt": "kotlin",
-        "swift": "swift",
-        "zig": "zig",
-        "hs": "haskell",
-        "lua": "lua"
+        "sh": "bash"
     }
 
     language = lang_map.get(ext, ext)
@@ -66,8 +59,14 @@ async def run_code(payload: CodePayload):
         ]
     }
 
+    # إضافة Headers لمنع خطأ 401 Unauthorized
+    headers = {
+        "User-Agent": "CodeXApp/1.0",
+        "Content-Type": "application/json"
+    }
+
     try:
-        async with httpx.AsyncClient(timeout=25.0) as client:
+        async with httpx.AsyncClient(timeout=25.0, headers=headers) as client:
             response = await client.post(PISTON_API_URL, json=piston_payload)
 
         if response.status_code == 200:
@@ -81,7 +80,7 @@ async def run_code(payload: CodePayload):
             output = run_stage.get("output", "[No Output]")
             return {"output": output}
         else:
-            return {"output": f"❌ Language '{language}' Error ({response.status_code})"}
+            return {"output": f"❌ Server Returned Code {response.status_code}:\n{response.text}"}
 
     except Exception as e:
         return {"output": f"❌ Server Error: {str(e)}"}
