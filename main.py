@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import asyncio
-import os
-import uuid
+import httpx
 import json
 
 app = FastAPI()
+
+# رابط Piston API المجاني المفتوح المصدر لتشغيل +100 لغة برمجية
+PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
 
 class CodePayload(BaseModel):
     code: str
@@ -13,64 +14,86 @@ class CodePayload(BaseModel):
 
 @app.get("/")
 async def home():
-    return {"status": "Server Active"}
+    return {"status": "Universal Multi-Language Engine Active (100+ Languages Supported)"}
 
 @app.post("/run")
 async def run_code(payload: CodePayload):
-    ext = os.path.splitext(payload.filename)[1].lower()
-    if not ext:
-        ext = ".py"
-
-    unique_id = str(uuid.uuid4())[:8]
-    temp_file = f"/tmp/code_{unique_id}{ext}"
-
-    # معالجة ملفات YAML
-    if ext in [".yaml", ".yml"]:
+    filename = payload.filename.strip()
+    ext = filename.split(".")[-1].lower() if "." in filename else "py"
+    
+    # معالجة خاصة لملفات YAML داخل السيرفر مباشرة
+    if ext in ["yaml", "yml"]:
         try:
             import yaml
             parsed_data = yaml.safe_load(payload.code)
             formatted_json = json.dumps(parsed_data, indent=2, ensure_ascii=False)
-            return {"output": f"✅ Valid YAML Syntax!\nParsed JSON Representation:\n{formatted_json}"}
-        except ModuleNotFoundError:
-            return {"output": "❌ Error: PyYAML library is missing on server. Add 'pyyaml' to requirements.txt."}
-        except Exception as yml_err:
-            return {"output": f"❌ Invalid YAML Syntax:\n{str(yml_err)}"}
+            return {"output": f"✅ Valid YAML Syntax!\nParsed JSON:\n{formatted_json}"}
+        except Exception as e:
+            return {"output": f"❌ Invalid YAML Syntax:\n{str(e)}"}
 
-    # كتابة الكود للملف المؤقت
-    with open(temp_file, "w", encoding="utf-8") as f:
-        f.write(payload.code)
+    # خريطة الامتدادات إلى أسماء اللغات في Piston API
+    lang_map = {
+        "py": "python",
+        "js": "javascript",
+        "ts": "typescript",
+        "cpp": "cpp",
+        "c": "c",
+        "cs": "csharp",
+        "rs": "rust",
+        "go": "go",
+        "java": "java",
+        "rb": "ruby",
+        "php": "php",
+        "sh": "bash",
+        "kt": "kotlin",
+        "swift": "swift",
+        "zig": "zig",
+        "hs": "haskell",
+        "lua": "lua",
+        "r": "r",
+        "pl": "perl",
+        "dart": "dart",
+        "scala": "scala",
+        "nim": "nim",
+        "ex": "elixir",
+        "clj": "clojure"
+    }
+
+    # تحديد اللغة أو استخدام اسم الامتداد مباشرة
+    language = lang_map.get(ext, ext)
+
+    # تجهيز الطلب لمحرك التشغيل الشامل
+    piston_payload = {
+        "language": language,
+        "version": "*",  # استخدام أحدث إصدار متوفر للغة
+        "files": [
+            {
+                "name": filename,
+                "content": payload.code
+            }
+        ]
+    }
 
     try:
-        if ext == ".py":
-            cmd = ["python3", temp_file]
-        elif ext == ".js":
-            cmd = ["node", temp_file]
-        elif ext == ".sh":
-            cmd = ["bash", temp_file]
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(PISTON_API_URL, json=piston_payload)
+
+        if response.status_code == 200:
+            res_data = response.json()
+            run_stage = res_data.get("run", {})
+            compile_stage = res_data.get("compile", {})
+
+            # إذا كان هناك خطأ في التجميع (Compilation Error)
+            if compile_stage and compile_stage.get("code") != 0:
+                return {"output": f"❌ Compilation Error:\n{compile_stage.get('output')}"}
+
+            # مخرجات التشغيل الفعلي (Execution Output)
+            output = run_stage.get("output", "[No Output]")
+            return {"output": output}
         else:
-            if os.path.exists(temp_file): os.remove(temp_file)
-            return {"output": f"Language '{ext}' requires custom environment setup on Vercel."}
+            return {"output": f"❌ Language '{language}' not supported or API Error ({response.status_code})."}
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-
-        try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15.0)
-            output = stdout.decode('utf-8', errors='ignore') if stdout else stderr.decode('utf-8', errors='ignore')
-        except asyncio.TimeoutError:
-            process.kill()
-            output = "Error: Timeout (15s limit)"
-
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
-
-        return {"output": output if output.strip() else "[No Output]"}
-
+    except httpx.TimeoutException:
+        return {"output": "❌ Error: Request Timed Out (20s Limit)."}
     except Exception as e:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
-        return {"output": f"Server Error: {str(e)}"}
-
+        return {"output": f"❌ Server Execution Error: {str(e)}"}
