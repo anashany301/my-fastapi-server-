@@ -23,7 +23,7 @@ async def run_code(payload: CodePayload):
         except Exception as e:
             return {"output": f"❌ Invalid YAML: {str(e)}"}
 
-    # 2. تشغيل بايثون محلياً
+    # 2. تشغيل بايثون محلياً بسرعة البرق
     if ext == "py":
         import sys
         import io
@@ -38,17 +38,18 @@ async def run_code(payload: CodePayload):
         except Exception as e:
             return {"output": f"❌ Python Error:\n{str(e)}"}
 
-    # 3. تشغيل باقي اللغات (مثل Rust, C++, C, JavaScript) عبر Wandbox المجاني
+    # 3. خريطة compilers المعتمدة رسمياً في Wandbox بدون أخطاء
     wandbox_map = {
-        "rs": "rust",
-        "cpp": "gcc-head",
-        "c": "gcc-head",
-        "js": "nodejs"
+        "rs": "rust-staging",     # مخصص للغة Rust بأحدث إصدار مستقر
+        "cpp": "gcc-head",          # لأحدث إصدار من C++
+        "c": "gcc-head",            # لغة C
+        "js": "nodejs-head",        # لغة JavaScript
+        "go": "go-head"             # لغة Go
     }
     
     compiler = wandbox_map.get(ext)
     if not compiler:
-        return {"output": f"❌ Language extension .{ext} is not supported yet."}
+        return {"output": f"❌ Language extension .{ext} is not supported on Wandbox."}
 
     wandbox_payload = {
         "code": payload.code,
@@ -62,10 +63,11 @@ async def run_code(payload: CodePayload):
         
         if response.status_code == 200:
             res = response.json()
-            output = res.get("program_output", "") or res.get("compiler_error", "")
+            # استخراج النتيجة أو أخطاء التجميع بوضوح
+            output = res.get("program_output", "") or res.get("compiler_error", "") or res.get("signal", "")
             return {"output": output if output.strip() else "[No Output]"}
         else:
-            return {"output": f"❌ Wandbox Error ({response.status_code})"}
+            return {"output": f"❌ Wandbox Error ({response.status_code}): {response.text}"}
             
     except Exception as e:
         return {"output": f"❌ Server Error: {str(e)}"}
