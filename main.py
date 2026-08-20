@@ -3,6 +3,7 @@ from pydantic import BaseModel
 import httpx
 import json
 import base64
+import os
 
 app = FastAPI()
 
@@ -13,12 +14,23 @@ class CodePayload(BaseModel):
     code: str
     filename: str
 
+class FileLoadPayload(BaseModel):
+    filename: str
+
+# 1. مسار تشغيل الكود (بيحفظه تلقائياً عند الرن عشان الواجهة تفضل متزامنة)
 @app.post("/run")
 async def run_code(payload: CodePayload):
     filename = payload.filename.strip()
+    
+    if filename:
+        try:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(payload.code)
+        except Exception:
+            pass
+
     ext = filename.split(".")[-1].lower() if "." in filename else "py"
 
-    # 1. معالجة ملفات YAML محلياً
     if ext in ["yaml", "yml"]:
         try:
             import yaml
@@ -27,7 +39,6 @@ async def run_code(payload: CodePayload):
         except Exception as e:
             return {"output": f"❌ Invalid YAML: {str(e)}"}
 
-    # 2. تشغيل بايثون محلياً بسرعة البرق
     if ext == "py":
         import sys
         import io
@@ -42,59 +53,24 @@ async def run_code(payload: CodePayload):
         except Exception as e:
             return {"output": f"❌ Python Error:\n{str(e)}"}
 
-    # خريطة ربط امتدادات الملفات بالكلمات الدالة في Judge0
     ext_keyword_map = {
-        "py": "python",
-        "js": "javascript",
-        "ts": "typescript",
-        "rs": "rust",
-        "cpp": "c++",
-        "c": "c (gcc",
-        "cs": "c#",
-        "java": "java",
-        "go": "go",
-        "rb": "ruby",
-        "php": "php",
-        "swift": "swift",
-        "kt": "kotlin",
-        "scala": "scala",
-        "s": "assembly",
-        "asm": "assembly",
-        "f": "fortran",
-        "f90": "fortran",
-        "cob": "cobol",
-        "ada": "ada",
-        "d": "d",
-        "sh": "bash",
-        "lua": "lua",
-        "pl": "perl",
-        "r": "r",
-        "jl": "julia",
-        "ex": "elixir",
-        "exs": "elixir",
-        "erl": "erlang",
-        "hs": "haskell",
-        "clj": "clojure",
-        "rkt": "racket",
-        "ml": "ocaml",
-        "pas": "pascal",
-        "tcl": "tcl",
-        "groovy": "groovy",
-        "dart": "dart",
-        "scm": "scheme",
-        "lisp": "common lisp",
-        "fs": "f#",
-        "b": "brainfuck",
-        "bf": "brainfuck",
+        "py": "python", "js": "javascript", "ts": "typescript", "rs": "rust",
+        "cpp": "c++", "c": "c (gcc", "cs": "c#", "java": "java", "go": "go",
+        "rb": "ruby", "php": "php", "swift": "swift", "kt": "kotlin",
+        "scala": "scala", "s": "assembly", "asm": "assembly", "f": "fortran",
+        "f90": "fortran", "cob": "cobol", "ada": "ada", "d": "d",
+        "sh": "bash", "lua": "lua", "pl": "perl", "r": "r", "jl": "julia",
+        "ex": "elixir", "exs": "elixir", "erl": "erlang", "hs": "haskell",
+        "clj": "clojure", "rkt": "racket", "ml": "ocaml", "pas": "pascal",
+        "tcl": "tcl", "groovy": "groovy", "dart": "dart", "scm": "scheme",
+        "lisp": "common lisp", "fs": "f#", "b": "brainfuck", "bf": "brainfuck",
         "coffee": "coffeescript"
     }
 
-    # ابحث في الخريطة، ولو مش موجودة اعتبر الامتداد هو نفسه كلمة البحث أوتوماتيك!
     keyword = ext_keyword_map.get(ext, ext)
 
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
-            # سحب قائمة اللغات من Judge0 ومطابقة الـ ID
             langs_response = await client.get(JUDGE0_LANGS_URL)
             language_id = None
             
@@ -106,12 +82,10 @@ async def run_code(payload: CodePayload):
                         language_id = lang.get("id")
                         break
             
-            # قيمة احتياطية لو اللغات مجاتش من السيرفر
             if not language_id:
                 fallback_map = {"rs": 73, "cpp": 54, "c": 50, "js": 63, "java": 62, "go": 60, "cs": 51, "s": 45}
                 language_id = fallback_map.get(ext, 73)
 
-            # تشفير الكود بـ Base64 لضمان دعم الإيموجي والرموز الخاصة
             encoded_code = base64.b64encode(payload.code.encode("utf-8")).decode("utf-8")
 
             judge0_payload = {
@@ -143,3 +117,21 @@ async def run_code(payload: CodePayload):
             
     except Exception as e:
         return {"output": f"❌ Server Error: {str(e)}"}
+
+
+# 2. مسار تحميل وقراءة الملفات القديمة للبحث والتعديل
+@app.post("/load")
+async def load_file(payload: FileLoadPayload):
+    filename = payload.filename.strip()
+    if not filename:
+        return {"output": "❌ Error: Filename is empty.", "content": ""}
+    
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                content = f.read()
+            return {"content": content, "output": f"✅ File '{filename}' loaded successfully!"}
+        except Exception as e:
+            return {"output": f"❌ Error reading file: {str(e)}", "content": ""}
+    else:
+        return {"output": f"⚠️ File '{filename}' not found on server!", "content": ""}
