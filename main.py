@@ -38,9 +38,9 @@ async def run_code(payload: CodePayload):
         except Exception as e:
             return {"output": f"❌ Python Error:\n{str(e)}"}
 
-    # 3. خريطة compilers المعتمدة رسمياً في Wandbox بدون أخطاء
+    # 3. خريطة compilers المعتمدة رسمياً في Wandbox
     wandbox_map = {
-        "rs": "rust-staging",     # مخصص للغة Rust بأحدث إصدار مستقر
+        "rs": "rust-stable",       # الاسم الصحيح المعتمد في Wandbox للغة Rust
         "cpp": "gcc-head",          # لأحدث إصدار من C++
         "c": "gcc-head",            # لغة C
         "js": "nodejs-head",        # لغة JavaScript
