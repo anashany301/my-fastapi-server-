@@ -5,6 +5,8 @@ import json
 
 app = FastAPI()
 
+JUDGE0_API_URL = "https://ce.judge0.com/submissions?wait=true"
+
 class CodePayload(BaseModel):
     code: str
     filename: str
@@ -38,36 +40,37 @@ async def run_code(payload: CodePayload):
         except Exception as e:
             return {"output": f"❌ Python Error:\n{str(e)}"}
 
-    # 3. خريطة compilers المعتمدة رسمياً في Wandbox
-    wandbox_map = {
-        "rs": "rust-stable",       # الاسم الصحيح المعتمد في Wandbox للغة Rust
-        "cpp": "gcc-head",          # لأحدث إصدار من C++
-        "c": "gcc-head",            # لغة C
-        "js": "nodejs-head",        # لغة JavaScript
-        "go": "go-head"             # لغة Go
+    # 3. خريطة أرقام اللغات الثابتة والمعتمدة في Judge0
+    # 73: Rust, 54: C++, 50: C, 63: JavaScript, 62: Java, 60: Go
+    lang_map = {
+        "rs": 73,
+        "cpp": 54,
+        "c": 50,
+        "js": 63,
+        "java": 62,
+        "go": 60,
+        "cs": 51
     }
-    
-    compiler = wandbox_map.get(ext)
-    if not compiler:
-        return {"output": f"❌ Language extension .{ext} is not supported on Wandbox."}
 
-    wandbox_payload = {
-        "code": payload.code,
-        "compiler": compiler,
-        "save": False
+    language_id = lang_map.get(ext)
+    if not language_id:
+        return {"output": f"❌ Language extension .{ext} is not supported."}
+
+    judge0_payload = {
+        "source_code": payload.code,
+        "language_id": language_id
     }
 
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
-            response = await client.post("https://wandbox.org/api/compile.json", json=wandbox_payload)
+            response = await client.post(JUDGE0_API_URL, json=judge0_payload)
         
-        if response.status_code == 200:
+        if response.status_code in [200, 201]:
             res = response.json()
-            # استخراج النتيجة أو أخطاء التجميع بوضوح
-            output = res.get("program_output", "") or res.get("compiler_error", "") or res.get("signal", "")
-            return {"output": output if output.strip() else "[No Output]"}
+            output = res.get("stdout") or res.get("stderr") or res.get("compile_output") or "[No Output]"
+            return {"output": output}
         else:
-            return {"output": f"❌ Wandbox Error ({response.status_code}): {response.text}"}
+            return {"output": f"❌ Judge0 Error ({response.status_code}): {response.text}"}
             
     except Exception as e:
         return {"output": f"❌ Server Error: {str(e)}"}
