@@ -42,24 +42,59 @@ async def run_code(payload: CodePayload):
         except Exception as e:
             return {"output": f"❌ Python Error:\n{str(e)}"}
 
-    # خريطة ربط امتدادات الملفات بالكلمات الدالة التي تبحث عنها في قائمة سيرفر Judge0
+    # خريطة ربط امتدادات الملفات بالكلمات الدالة في Judge0
     ext_keyword_map = {
+        "py": "python",
+        "js": "javascript",
+        "ts": "typescript",
         "rs": "rust",
         "cpp": "c++",
         "c": "c (gcc",
-        "js": "javascript",
+        "cs": "c#",
         "java": "java",
         "go": "go",
-        "cs": "c#"
+        "rb": "ruby",
+        "php": "php",
+        "swift": "swift",
+        "kt": "kotlin",
+        "scala": "scala",
+        "s": "assembly",
+        "asm": "assembly",
+        "f": "fortran",
+        "f90": "fortran",
+        "cob": "cobol",
+        "ada": "ada",
+        "d": "d",
+        "sh": "bash",
+        "lua": "lua",
+        "pl": "perl",
+        "r": "r",
+        "jl": "julia",
+        "ex": "elixir",
+        "exs": "elixir",
+        "erl": "erlang",
+        "hs": "haskell",
+        "clj": "clojure",
+        "rkt": "racket",
+        "ml": "ocaml",
+        "pas": "pascal",
+        "tcl": "tcl",
+        "groovy": "groovy",
+        "dart": "dart",
+        "scm": "scheme",
+        "lisp": "common lisp",
+        "fs": "f#",
+        "b": "brainfuck",
+        "bf": "brainfuck",
+        "coffee": "coffeescript"
     }
 
-    keyword = ext_keyword_map.get(ext)
-    if not keyword:
-        return {"output": f"❌ Language extension .{ext} is not supported."}
+    # ابحث في الخريطة، ولو مش موجودة اعتبر الامتداد هو نفسه كلمة البحث أوتوماتيك!
+    keyword = ext_keyword_map.get(ext, ext)
 
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
-            # 3. سحب قائمة اللغات مباشرة من سيرفر Judge0 ومعرفة الـ ID الخاص بها
+            # سحب قائمة اللغات من Judge0 ومطابقة الـ ID
             langs_response = await client.get(JUDGE0_LANGS_URL)
             language_id = None
             
@@ -71,12 +106,12 @@ async def run_code(payload: CodePayload):
                         language_id = lang.get("id")
                         break
             
-            # قيمة احتياطية لو السيرفر ما ردش لسبب ما
+            # قيمة احتياطية لو اللغات مجاتش من السيرفر
             if not language_id:
-                fallback_map = {"rs": 73, "cpp": 54, "c": 50, "js": 63, "java": 62, "go": 60, "cs": 51}
+                fallback_map = {"rs": 73, "cpp": 54, "c": 50, "js": 63, "java": 62, "go": 60, "cs": 51, "s": 45}
                 language_id = fallback_map.get(ext, 73)
 
-            # تشفير الكود بـ Base64 لضمان عدم ضياع أي رموز أو إيموجي
+            # تشفير الكود بـ Base64 لضمان دعم الإيموجي والرموز الخاصة
             encoded_code = base64.b64encode(payload.code.encode("utf-8")).decode("utf-8")
 
             judge0_payload = {
@@ -107,4 +142,4 @@ async def run_code(payload: CodePayload):
             return {"output": f"❌ Judge0 Error ({response.status_code}): {response.text}"}
             
     except Exception as e:
-                return {"output": f"❌ Server Error: {str(e)}"}
+        return {"output": f"❌ Server Error: {str(e)}"}
