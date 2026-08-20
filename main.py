@@ -5,68 +5,61 @@ import json
 
 app = FastAPI()
 
-# عنوان API الجديد الخاص بـ Glot.io
-GLOT_API_URL = "https://run.glot.io/languages"
+# بيانات حسابك في JDoodle
+JDOODLE_CLIENT_ID = "c1dd783f1c39b45d4d81eaf787d98df"
+JDOODLE_CLIENT_SECRET = "e39ea5f80075906801e3f8f3b73763085f24800abd1897cd8eea73d3712e1ca4"
 
 class CodePayload(BaseModel):
     code: str
     filename: str
 
-@app.get("/")
-async def home():
-    return {"status": "Universal Multi-Language API Active (Glot.io)"}
-
 @app.post("/run")
 async def run_code(payload: CodePayload):
-    filename = payload.filename.strip() if payload.filename else "main.py"
+    filename = payload.filename.strip()
     ext = filename.split(".")[-1].lower() if "." in filename else "py"
 
-    # معالجة ملفات YAML محلياً (لأنها لا تحتاج تجميع)
+    # معالجة ملفات YAML محلياً
     if ext in ["yaml", "yml"]:
         try:
             import yaml
             parsed_data = yaml.safe_load(payload.code)
-            return {"output": f"✅ Valid YAML!\n{json.dumps(parsed_data, indent=2)}"}
+            return {"output": f"✅ Valid YAML!\n{json.dumps(parsed_data, indent=2, ensure_ascii=False)}"}
         except Exception as e:
             return {"output": f"❌ Invalid YAML: {str(e)}"}
 
-    # خريطة لغات glot.io (الأسماء تختلف قليلاً عن Piston)
+    # خريطة لغات JDoodle (اللغة ورقم الإصدار)
     lang_map = {
-        "py": "python",
-        "js": "javascript",
-        "rs": "rust",
-        "cpp": "cpp",
-        "c": "c",
-        "cs": "csharp",
-        "go": "go",
-        "java": "java",
-        "rb": "ruby",
-        "php": "php",
-        "sh": "bash"
+        "py": ("python3", "4"),
+        "js": ("nodejs", "4"),
+        "rs": ("rust", "4"),
+        "cpp": ("cpp", "5"),
+        "c": ("c", "5"),
+        "java": ("java", "4"),
+        "go": ("go", "4"),
+        "cs": ("csharp", "4"),
+        "php": ("php", "4"),
+        "rb": ("ruby", "4")
     }
 
-    language = lang_map.get(ext, ext)
-    
-    # تنسيق الطلب لـ Glot.io
-    glot_payload = {
-        "files": [{"name": filename, "content": payload.code}]
+    lang_info = lang_map.get(ext, ("python3", "4"))
+    language, version = lang_info[0], lang_info[1]
+
+    jdoodle_payload = {
+        "clientId": JDOODLE_CLIENT_ID,
+        "clientSecret": JDOODLE_CLIENT_SECRET,
+        "script": payload.code,
+        "language": language,
+        "versionIndex": version
     }
 
-    # API Token مجاني من Glot (تحتاج فقط التسجيل في glot.io والحصول على توكن بسيط، أو استخدامه بدون توكن بحدود)
-    # ملاحظة: إذا توقف العمل، سأعطيك طريقة بديلة فوراً.
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
-            response = await client.post(
-                f"{GLOT_API_URL}/{language}/latest", 
-                json=glot_payload
-            )
-
+            response = await client.post("https://api.jdoodle.com/v1/execute", json=jdoodle_payload)
+        
         if response.status_code == 200:
-            res_data = response.json()
-            output = res_data.get("stdout", "") + res_data.get("stderr", "")
-            return {"output": output if output.strip() else "[No Output]"}
+            result = response.json()
+            return {"output": result.get("output", "[No Output]")}
         else:
             return {"output": f"❌ Error ({response.status_code}): {response.text}"}
-
     except Exception as e:
         return {"output": f"❌ Server Error: {str(e)}"}
