@@ -17,7 +17,7 @@ class CodePayload(BaseModel):
 class FileLoadPayload(BaseModel):
     filename: str
 
-# 1. مسار تشغيل الكود (بيحفظه تلقائياً عند الرن عشان الواجهة تفضل متزامنة)
+# 1. مسار تشغيل الكود وحفظه تلقائياً
 @app.post("/run")
 async def run_code(payload: CodePayload):
     filename = payload.filename.strip()
@@ -118,8 +118,7 @@ async def run_code(payload: CodePayload):
     except Exception as e:
         return {"output": f"❌ Server Error: {str(e)}"}
 
-
-# 2. مسار تحميل وقراءة الملفات القديمة للبحث والتعديل
+# 2. مسار تحميل وقراءة الملفات القديمة لتعديلها
 @app.post("/load")
 async def load_file(payload: FileLoadPayload):
     filename = payload.filename.strip()
