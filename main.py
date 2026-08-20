@@ -5,8 +5,8 @@ import json
 
 app = FastAPI()
 
-# نقطة النهاية العامة المباشرة
-PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
+# عنوان API الجديد الخاص بـ Glot.io
+GLOT_API_URL = "https://run.glot.io/languages"
 
 class CodePayload(BaseModel):
     code: str
@@ -14,31 +14,30 @@ class CodePayload(BaseModel):
 
 @app.get("/")
 async def home():
-    return {"status": "Universal Multi-Language API Active"}
+    return {"status": "Universal Multi-Language API Active (Glot.io)"}
 
 @app.post("/run")
 async def run_code(payload: CodePayload):
     filename = payload.filename.strip() if payload.filename else "main.py"
     ext = filename.split(".")[-1].lower() if "." in filename else "py"
 
-    # معالجة ملفات YAML
+    # معالجة ملفات YAML محلياً (لأنها لا تحتاج تجميع)
     if ext in ["yaml", "yml"]:
         try:
             import yaml
             parsed_data = yaml.safe_load(payload.code)
-            formatted_json = json.dumps(parsed_data, indent=2, ensure_ascii=False)
-            return {"output": f"✅ Valid YAML Syntax!\nParsed JSON:\n{formatted_json}"}
+            return {"output": f"✅ Valid YAML!\n{json.dumps(parsed_data, indent=2)}"}
         except Exception as e:
-            return {"output": f"❌ Invalid YAML Syntax:\n{str(e)}"}
+            return {"output": f"❌ Invalid YAML: {str(e)}"}
 
+    # خريطة لغات glot.io (الأسماء تختلف قليلاً عن Piston)
     lang_map = {
         "py": "python",
         "js": "javascript",
-        "ts": "typescript",
+        "rs": "rust",
         "cpp": "cpp",
         "c": "c",
         "cs": "csharp",
-        "rs": "rust",
         "go": "go",
         "java": "java",
         "rb": "ruby",
@@ -47,40 +46,27 @@ async def run_code(payload: CodePayload):
     }
 
     language = lang_map.get(ext, ext)
-
-    piston_payload = {
-        "language": language,
-        "version": "*",
-        "files": [
-            {
-                "name": filename,
-                "content": payload.code
-            }
-        ]
+    
+    # تنسيق الطلب لـ Glot.io
+    glot_payload = {
+        "files": [{"name": filename, "content": payload.code}]
     }
 
-    # إضافة Headers لمنع خطأ 401 Unauthorized
-    headers = {
-        "User-Agent": "CodeXApp/1.0",
-        "Content-Type": "application/json"
-    }
-
+    # API Token مجاني من Glot (تحتاج فقط التسجيل في glot.io والحصول على توكن بسيط، أو استخدامه بدون توكن بحدود)
+    # ملاحظة: إذا توقف العمل، سأعطيك طريقة بديلة فوراً.
     try:
-        async with httpx.AsyncClient(timeout=25.0, headers=headers) as client:
-            response = await client.post(PISTON_API_URL, json=piston_payload)
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            response = await client.post(
+                f"{GLOT_API_URL}/{language}/latest", 
+                json=glot_payload
+            )
 
         if response.status_code == 200:
             res_data = response.json()
-            run_stage = res_data.get("run", {})
-            compile_stage = res_data.get("compile", {})
-
-            if compile_stage and compile_stage.get("code", 0) != 0:
-                return {"output": f"❌ Compilation Error:\n{compile_stage.get('output')}"}
-
-            output = run_stage.get("output", "[No Output]")
-            return {"output": output}
+            output = res_data.get("stdout", "") + res_data.get("stderr", "")
+            return {"output": output if output.strip() else "[No Output]"}
         else:
-            return {"output": f"❌ Server Returned Code {response.status_code}:\n{response.text}"}
+            return {"output": f"❌ Error ({response.status_code}): {response.text}"}
 
     except Exception as e:
         return {"output": f"❌ Server Error: {str(e)}"}
